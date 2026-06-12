@@ -352,12 +352,13 @@ def analyze():
                 print(f"✗ GitHub validation failed: {github_error}")
         
         # Validation with better error handling
+        # If GitHub username was explicitly provided and it failed, reject immediately
+        if github_was_requested and github_error:
+            return jsonify({"error": github_error}), 400
+        
+        # Check for required inputs
         if not resume_text and not github_skills:
-            if github_was_requested and github_error:
-                # GitHub was requested but invalid - show specific error
-                return jsonify({"error": github_error}), 400
-            else:
-                return jsonify({"error": "Please provide resume text, PDF, or GitHub profile"}), 400
+            return jsonify({"error": "Please provide resume text, PDF, or GitHub profile"}), 400
         
         if not job_description:
             return jsonify({"error": "Job description is required"}), 400
