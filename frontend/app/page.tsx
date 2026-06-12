@@ -70,14 +70,22 @@ export default function HomePage() {
           body: form,
         })
       } else {
+        const payload: any = {
+          job_description: jobDescText,
+        }
+        
+        if (resumeText) {
+          payload.resume_text = resumeText
+        }
+        
+        if (gitUsername) {
+          payload.github_username = gitUsername
+        }
+        
         response = await fetch(`${apiUrl}/api/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            resume_text: resumeText,
-            job_description: jobDescText,
-            github_username: gitUsername || undefined,
-          }),
+          body: JSON.stringify(payload),
         })
       }
 
