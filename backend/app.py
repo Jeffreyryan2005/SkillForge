@@ -86,29 +86,58 @@ def extract_text_from_pdf(file_stream):
         print(f"Error extracting PDF: {e}")
         return ""
 
-def fetch_github_skills(github_username: str) -> list:
-    """Fetch GitHub user's repositories and extract programming languages used."""
+def fetch_github_skills(github_username: str) -> dict:
+    """
+    Fetch GitHub user's repositories and extract programming languages used.
+    Returns: {
+        'status': 'success' | 'user_not_found' | 'no_repos' | 'error',
+        'skills': [list of languages],
+        'error': 'error message if status is not success'
+    }
+    """
     try:
         # Clean up username
         username = github_username.replace("https://github.com/", "").replace("http://github.com/", "").strip()
         if not username:
-            return []
+            return {
+                'status': 'error',
+                'skills': [],
+                'error': 'GitHub username is empty'
+            }
         
-        print(f"Fetching GitHub skills for: {username}")
+        print(f"Validating GitHub user: {username}")
         
         # Fetch user repositories - use a smaller page size to avoid rate limiting
         repos_url = f"https://api.github.com/users/{username}/repos?per_page=20&sort=updated"
         repos_response = requests.get(repos_url, timeout=8, headers={"Accept": "application/vnd.github.v3+json"})
+        
+        # Check for 404 (user not found)
+        if repos_response.status_code == 404:
+            print(f"GitHub user not found: {username}")
+            return {
+                'status': 'user_not_found',
+                'skills': [],
+                'error': f"GitHub user '{username}' not found. Please check the username and try again."
+            }
+        
         repos_response.raise_for_status()
         repos = repos_response.json()
         
         if not isinstance(repos, list):
             print(f"GitHub API error: unexpected response type")
-            return []
+            return {
+                'status': 'error',
+                'skills': [],
+                'error': 'Unexpected response from GitHub API'
+            }
         
         if not repos:
-            print(f"No repositories found for {username}")
-            return []
+            print(f"No public repositories found for {username}")
+            return {
+                'status': 'no_repos',
+                'skills': [],
+                'error': f"GitHub user '{username}' has no public repositories. Please make your repositories public or provide a resume instead."
+            }
         
         # Aggregate language data with minimal API calls
         language_bytes = {}
@@ -142,21 +171,49 @@ def fetch_github_skills(github_username: str) -> list:
         sorted_langs = sorted(language_bytes.items(), key=lambda x: x[1], reverse=True)
         top_skills = [lang for lang, _ in sorted_langs[:15]]
         
-        print(f"Found {len(top_skills)} languages: {top_skills[:5]}")
-        return top_skills if top_skills else []
+        if not top_skills:
+            print(f"No programming languages detected in {username}'s repositories")
+            return {
+                'status': 'no_repos',
+                'skills': [],
+                'error': f"Could not detect any programming languages in '{username}'s public repositories. Please provide a resume instead."
+            }
+        
+        print(f"✓ Found {len(top_skills)} languages for {username}: {top_skills[:5]}")
+        return {
+            'status': 'success',
+            'skills': top_skills,
+            'error': None
+        }
         
     except requests.exceptions.Timeout:
         print(f"GitHub API timeout for {github_username}")
-        return []
+        return {
+            'status': 'error',
+            'skills': [],
+            'error': 'GitHub API request timed out. Please try again or provide a resume instead.'
+        }
     except requests.exceptions.HTTPError as e:
         print(f"GitHub API HTTP error: {e.response.status_code}")
-        return []
+        return {
+            'status': 'error',
+            'skills': [],
+            'error': f'GitHub API error ({e.response.status_code}). Please try again later.'
+        }
     except requests.exceptions.RequestException as e:
         print(f"GitHub API request error: {str(e)[:50]}")
-        return []
+        return {
+            'status': 'error',
+            'skills': [],
+            'error': 'Failed to connect to GitHub. Please check your internet connection.'
+        }
     except Exception as e:
         print(f"Unexpected error fetching GitHub skills: {str(e)[:50]}")
-        return []
+        return {
+            'status': 'error',
+            'skills': [],
+            'error': f'Unexpected error: {str(e)[:50]}'
+        }
 
 def extract_skills_from_text(text):
     """Extract skills from resume or job description text."""
@@ -279,20 +336,26 @@ def analyze():
         
         # Fetch GitHub skills if provided
         github_skills = []
-        github_fetch_failed = False
-        if github_username and len(github_username) >= 3:
-            print(f"\n→ Attempting to fetch GitHub profile: {github_username}")
-            github_skills = fetch_github_skills(github_username)
-            if not github_skills:
-                github_fetch_failed = True
-                print(f"⚠ GitHub fetch returned empty for: {github_username}")
+        github_error = None
+        github_was_requested = bool(github_username and len(github_username) >= 3)
+        
+        if github_was_requested:
+            print(f"\n→ GitHub profile requested: {github_username}")
+            github_result = fetch_github_skills(github_username)
+            
+            if github_result['status'] == 'success':
+                github_skills = github_result['skills']
+                print(f"✓ GitHub analysis successful - {len(github_skills)} skills found")
+            else:
+                # GitHub was explicitly requested but failed - return error instead of fallback
+                github_error = github_result['error']
+                print(f"✗ GitHub validation failed: {github_error}")
         
         # Validation with better error handling
         if not resume_text and not github_skills:
-            if github_username and github_fetch_failed:
-                return jsonify({
-                    "error": f"Could not fetch GitHub profile '{github_username}'. Please provide resume text instead, or check the GitHub username is correct."
-                }), 400
+            if github_was_requested and github_error:
+                # GitHub was requested but invalid - show specific error
+                return jsonify({"error": github_error}), 400
             else:
                 return jsonify({"error": "Please provide resume text, PDF, or GitHub profile"}), 400
         
