@@ -589,5 +589,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Made with ❤️ for the Microsoft Agents League Hackathon 2026**
 
 **Status**: ✅ Production Ready | 🚀 Ready to Deploy | 🎯 Ready to Submit
-#   S k i l l F o r g e  
- 
+#
