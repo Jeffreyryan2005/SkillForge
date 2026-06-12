@@ -94,36 +94,68 @@ def fetch_github_skills(github_username: str) -> list:
         if not username:
             return []
         
-        # Fetch user repositories
-        repos_url = f"https://api.github.com/users/{username}/repos?per_page=30"
-        repos_response = requests.get(repos_url, timeout=10)
+        print(f"Fetching GitHub skills for: {username}")
+        
+        # Fetch user repositories - use a smaller page size to avoid rate limiting
+        repos_url = f"https://api.github.com/users/{username}/repos?per_page=20&sort=updated"
+        repos_response = requests.get(repos_url, timeout=8, headers={"Accept": "application/vnd.github.v3+json"})
         repos_response.raise_for_status()
         repos = repos_response.json()
         
         if not isinstance(repos, list):
+            print(f"GitHub API error: unexpected response type")
             return []
         
-        # Aggregate language data
+        if not repos:
+            print(f"No repositories found for {username}")
+            return []
+        
+        # Aggregate language data with minimal API calls
         language_bytes = {}
-        for repo in repos:
-            if repo.get('languages_url'):
-                try:
-                    langs_response = requests.get(repo['languages_url'], timeout=5)
-                    langs_response.raise_for_status()
-                    langs = langs_response.json()
-                    if isinstance(langs, dict):
-                        for lang, bytes_count in langs.items():
-                            language_bytes[lang] = language_bytes.get(lang, 0) + bytes_count
-                except Exception:
-                    continue
+        processed = 0
+        
+        for repo in repos[:10]:  # Limit to 10 most recent repos to avoid rate limits
+            try:
+                if repo.get('language'):
+                    lang = repo['language']
+                    size = repo.get('size', 0)
+                    language_bytes[lang] = language_bytes.get(lang, 0) + size
+                    
+                # Also try languages_url if available
+                if repo.get('languages_url') and processed < 5:  # Only fetch details for 5 repos
+                    try:
+                        langs_response = requests.get(repo['languages_url'], timeout=3, headers={"Accept": "application/vnd.github.v3+json"})
+                        if langs_response.status_code == 200:
+                            langs = langs_response.json()
+                            if isinstance(langs, dict):
+                                for lang, bytes_count in langs.items():
+                                    language_bytes[lang] = language_bytes.get(lang, 0) + bytes_count
+                        processed += 1
+                    except Exception as e:
+                        print(f"Error fetching languages for {repo['name']}: {str(e)[:50]}")
+                        continue
+            except Exception as e:
+                print(f"Error processing repo: {str(e)[:50]}")
+                continue
         
         # Sort by usage and return top 15
         sorted_langs = sorted(language_bytes.items(), key=lambda x: x[1], reverse=True)
         top_skills = [lang for lang, _ in sorted_langs[:15]]
+        
+        print(f"Found {len(top_skills)} languages: {top_skills[:5]}")
         return top_skills if top_skills else []
-    except requests.exceptions.RequestException:
+        
+    except requests.exceptions.Timeout:
+        print(f"GitHub API timeout for {github_username}")
         return []
-    except Exception:
+    except requests.exceptions.HTTPError as e:
+        print(f"GitHub API HTTP error: {e.response.status_code}")
+        return []
+    except requests.exceptions.RequestException as e:
+        print(f"GitHub API request error: {str(e)[:50]}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error fetching GitHub skills: {str(e)[:50]}")
         return []
 
 def extract_skills_from_text(text):
@@ -247,15 +279,27 @@ def analyze():
         
         # Fetch GitHub skills if provided
         github_skills = []
+        github_fetch_failed = False
         if github_username and len(github_username) >= 3:
+            print(f"\n→ Attempting to fetch GitHub profile: {github_username}")
             github_skills = fetch_github_skills(github_username)
+            if not github_skills:
+                github_fetch_failed = True
+                print(f"⚠ GitHub fetch returned empty for: {github_username}")
         
-        # Validation
+        # Validation with better error handling
         if not resume_text and not github_skills:
-            return jsonify({"error": "Please provide resume text, PDF, or GitHub profile"}), 400
+            if github_username and github_fetch_failed:
+                return jsonify({
+                    "error": f"Could not fetch GitHub profile '{github_username}'. Please provide resume text instead, or check the GitHub username is correct."
+                }), 400
+            else:
+                return jsonify({"error": "Please provide resume text, PDF, or GitHub profile"}), 400
         
         if not job_description:
             return jsonify({"error": "Job description is required"}), 400
+        
+        print(f"✓ Validation passed - resume: {len(resume_text)} chars, github_skills: {len(github_skills)}, job_desc: {len(job_description)} chars")
         
         # Combine inputs for prompt
         input_text = f"""Resume/Skills: {resume_text or ', '.join(github_skills)}
