@@ -221,7 +221,8 @@ def health():
     """Health check endpoint."""
     return jsonify({
         "status": "ok",
-        "model": "llama-3.3-70b-versatile"
+        "model": "llama-3.3-70b-versatile",
+        "version": "2.0-real-analysis"
     })
 
 @app.route('/api/analyze', methods=['POST'])
