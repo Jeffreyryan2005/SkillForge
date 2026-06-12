@@ -107,9 +107,15 @@ def fetch_github_skills(github_username: str) -> dict:
         
         print(f"Validating GitHub user: {username}")
         
+        # Build headers with GitHub token if available (increases rate limit from 60 to 5000 requests/hour)
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        github_token = os.getenv("GITHUB_TOKEN", "").strip()
+        if github_token:
+            headers["Authorization"] = f"token {github_token}"
+        
         # Fetch user repositories - use a smaller page size to avoid rate limiting
         repos_url = f"https://api.github.com/users/{username}/repos?per_page=20&sort=updated"
-        repos_response = requests.get(repos_url, timeout=8, headers={"Accept": "application/vnd.github.v3+json"})
+        repos_response = requests.get(repos_url, timeout=8, headers=headers)
         
         # Check for 404 (user not found)
         if repos_response.status_code == 404:
@@ -153,7 +159,7 @@ def fetch_github_skills(github_username: str) -> dict:
                 # Also try languages_url if available
                 if repo.get('languages_url') and processed < 5:  # Only fetch details for 5 repos
                     try:
-                        langs_response = requests.get(repo['languages_url'], timeout=3, headers={"Accept": "application/vnd.github.v3+json"})
+                        langs_response = requests.get(repo['languages_url'], timeout=3, headers=headers)
                         if langs_response.status_code == 200:
                             langs = langs_response.json()
                             if isinstance(langs, dict):
