@@ -127,9 +127,9 @@ https://skillforge-backend.onrender.com/api/health
 
 **Project Name**: `skillforge-frontend` (auto-filled)
 
-**Framework Preset**: Next.js (should auto-select)
+**Framework Preset**: Select **"Next.js"** explicitly (even if it's auto-detected).
 
-**Root Directory**: Click to change, select **`frontend/`** folder
+**Root Directory**: Click to change, select **`frontend/`** folder.
 
 ### Step 4: Add Environment Variables
 
