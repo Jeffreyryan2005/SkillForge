@@ -396,36 +396,65 @@ Provide ONLY a valid JSON response (no markdown, no code fences) with this exact
     {{
       "week": 1,
       "focus": "<primary skill to learn this week>",
-      "tasks": ["<specific task 1>", "<specific task 2>", "<specific task 3>"]
+      "tasks": [
+        {{"task": "<specific task 1>", "resource": "<real resource name, e.g. 'freeCodeCamp - Docker for Beginners'>", "resource_url": "<real base URL, e.g. https://www.freecodecamp.org/learn>", "type": "<one of: video, course, docs, practice>"}},
+        {{"task": "<specific task 2>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 3>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}}
+      ]
     }},
     {{
       "week": 2,
       "focus": "<primary skill to learn this week>",
-      "tasks": ["<specific task 1>", "<specific task 2>", "<specific task 3>"]
+      "tasks": [
+        {{"task": "<specific task 1>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 2>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 3>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}}
+      ]
     }},
     {{
       "week": 3,
       "focus": "<primary skill to learn this week>",
-      "tasks": ["<specific task 1>", "<specific task 2>", "<specific task 3>"]
+      "tasks": [
+        {{"task": "<specific task 1>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 2>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 3>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}}
+      ]
     }},
     {{
       "week": 4,
       "focus": "<primary skill to learn this week>",
-      "tasks": ["<specific task 1>", "<specific task 2>", "<specific task 3>"]
+      "tasks": [
+        {{"task": "<specific task 1>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 2>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}},
+        {{"task": "<specific task 3>", "resource": "<real resource name>", "resource_url": "<real base URL>", "type": "<video|course|docs|practice>"}}
+      ]
     }}
   ]
 }}
 
+IMPORTANT for "resource" and "resource_url": NEVER use generic placeholders like
+"Online course" or "https://learn.example.com" or "example.com". Always use a
+real, well-known platform name and its real top-level URL, chosen to match the
+specific skill, such as:
+- "freeCodeCamp - <topic>" -> https://www.freecodecamp.org/learn
+- "MDN Web Docs - <topic>" -> https://developer.mozilla.org
+- "Official <Tech> Documentation" -> e.g. https://react.dev, https://docs.python.org,
+  https://flask.palletsprojects.com, https://docs.github.com, https://git-scm.com/doc
+- "Coursera - <topic>" -> https://www.coursera.org
+- "YouTube - <Channel/topic>" -> https://www.youtube.com
+- "Codecademy - <topic>" -> https://www.codecademy.com
+- "Khan Academy - <topic>" -> https://www.khanacademy.org
+
 Be specific about match_score based on actual skill overlap. Calculate: (matched_skills count / required_skills count) * 100"""
                 
-                response = client.messages.create(
+                response = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                     max_tokens=3000
                 )
                 
-                response_text = response.content[0].text
+                response_text = response.choices[0].message.content
                 analysis = parse_analysis_response(response_text)
                 print(f"✓ Groq API analysis successful - match_score: {analysis.get('match_score', 0)}")
                 
@@ -441,6 +470,34 @@ Be specific about match_score based on actual skill overlap. Calculate: (matched
             analysis = generate_mock_analysis(resume_text, github_skills, job_description)
             print(f"✓ Text-based analysis complete - match_score: {analysis.get('match_score', 0)}")
         
+        # Fallback real-resource picker for mock/text-based analysis (plain string tasks)
+        FALLBACK_RESOURCES = [
+            {"resource": "freeCodeCamp", "resource_url": "https://www.freecodecamp.org/learn", "type": "course"},
+            {"resource": "MDN Web Docs", "resource_url": "https://developer.mozilla.org", "type": "docs"},
+            {"resource": "YouTube", "resource_url": "https://www.youtube.com", "type": "video"},
+            {"resource": "Codecademy", "resource_url": "https://www.codecademy.com", "type": "practice"},
+        ]
+
+        def build_task(i, task):
+            day_range = f"Day {(i*2)+1}-{(i*2)+2}"
+            if isinstance(task, dict):
+                return {
+                    "day_range": day_range,
+                    "task": task.get("task", ""),
+                    "resource": task.get("resource") or FALLBACK_RESOURCES[i % len(FALLBACK_RESOURCES)]["resource"],
+                    "resource_url": task.get("resource_url") or FALLBACK_RESOURCES[i % len(FALLBACK_RESOURCES)]["resource_url"],
+                    "type": task.get("type") or FALLBACK_RESOURCES[i % len(FALLBACK_RESOURCES)]["type"],
+                }
+            # plain string task (mock analysis fallback)
+            fallback = FALLBACK_RESOURCES[i % len(FALLBACK_RESOURCES)]
+            return {
+                "day_range": day_range,
+                "task": task,
+                "resource": fallback["resource"],
+                "resource_url": fallback["resource_url"],
+                "type": fallback["type"],
+            }
+
         # Transform response to match frontend expectations
         transformed = {
             "match_score": analysis.get("match_score", 0),
@@ -459,17 +516,8 @@ Be specific about match_score based on actual skill overlap. Calculate: (matched
                 {
                     "week": plan.get("week", i+1),
                     "title": plan.get("focus", ""),
-                    "skills": plan.get("tasks", []),
-                    "tasks": [
-                        {
-                            "day_range": f"Day {(i*2)+1}-{(i*2)+2}",
-                            "task": task,
-                            "resource": "Online course",
-                            "resource_url": "https://learn.example.com",
-                            "type": "course"
-                        }
-                        for i, task in enumerate(plan.get("tasks", [])[:3])
-                    ]
+                    "skills": [t.get("task") if isinstance(t, dict) else t for t in plan.get("tasks", [])],
+                    "tasks": [build_task(j, task) for j, task in enumerate(plan.get("tasks", [])[:3])]
                 }
                 for i, plan in enumerate(analysis.get("learning_plan", []))
             ],
@@ -501,8 +549,8 @@ def get_learning_plan():
                 "focus": f"Learn {skill}",
                 "tasks": [f"Study {skill} basics", f"Practice {skill}"],
                 "resources": [
-                    {"title": "Free Course", "url": "https://learn.example.com"},
-                    {"title": "Documentation", "url": "https://docs.example.com"}
+                    {"title": "freeCodeCamp", "url": "https://www.freecodecamp.org/learn"},
+                    {"title": "MDN Web Docs", "url": "https://developer.mozilla.org"}
                 ]
             })
         
@@ -514,21 +562,25 @@ Respond with a JSON plan for week 1 only:
   "focus": "<main focus>",
   "tasks": ["<day 1>", "<day 2>", ... "<day 7>"],
   "resources": [
-    {{"title": "<resource>", "url": "<url>"}},
+    {{"title": "<real resource name, e.g. 'freeCodeCamp - {skill} Basics'>", "url": "<real base URL, e.g. https://www.freecodecamp.org/learn>"}},
     ...
   ]
 }}
 
+NEVER use placeholders like "Free Course" with "https://learn.example.com" or
+"example.com". Use real platforms (freeCodeCamp, MDN Web Docs, official docs,
+Coursera, YouTube, Codecademy, Khan Academy) with their real top-level URLs.
+
 Respond with ONLY valid JSON."""
         
-        response = client.messages.create(
+        response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=1000
         )
         
-        response_text = response.content[0].text
+        response_text = response.choices[0].message.content
         plan = parse_analysis_response(response_text)
         return jsonify(plan)
     
